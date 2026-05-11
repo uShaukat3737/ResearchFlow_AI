@@ -11,32 +11,33 @@ from app.graph.builder import create_research_graph
 
 def print_banner():
     print("=" * 65)
-    print("      🔍  RESEARCHFLOW AI: MULTI-AGENT BUSINESS RESEARCHER  🔍      ")
+    print("        RESEARCHFLOW AI: MULTI-AGENT BUSINESS RESEARCHER        ")
     print("=" * 65)
-    print("  Coordinated Agents: Clarity ➡️ Research ➡️ Validator ➡️ Synthesis")
+    print("  Coordinated Agents: Clarity -> Research -> Validator -> Synthesis")
     print("  Memory Checkpointer: Persistent Multi-turn thread")
     print("  Human-in-the-Loop: Active Gatekeeping")
     print("=" * 65)
     print()
 
 def select_llm_provider():
-    print("🤖 Choose your LLM Execution Mode for this session:")
-    print("   [1] Local (Ollama - phi3:mini) 🏠")
-    print("   [2] Cloud API (Groq - llama-3.3-70b-versatile) ⚡")
+    print("Choose your LLM Execution Mode for this session:")
+    print("   [1] Local (Ollama - phi3:mini)")
+    print("   [2] Cloud API (Groq - llama-3.3-70b-versatile)")
     print()
     while True:
-        choice = input("👉 Enter choice (1 or 2) [default: 1]: ").strip()
+        choice = input("Enter choice (1 or 2) [default: 1]: ").strip()
         if not choice or choice == "1":
             os.environ["LLM_PROVIDER"] = "ollama"
             os.environ["OLLAMA_MODEL"] = "phi3:mini"
-            print("\n🟢 Selected Execution: Local 'phi3:mini' (Ollama)\n")
+            print("\nSelected Execution: Local 'phi3:mini' (Ollama)\n")
             break
         elif choice == "2":
             os.environ["LLM_PROVIDER"] = "groq"
-            print("\n🟢 Selected Execution: Cloud 'llama-3.3-70b-versatile' (Groq)\n")
+            print("\nSelected Execution: Cloud 'llama-3.3-70b-versatile' (Groq)\n")
             break
         else:
-            print("❌ Invalid choice. Please enter '1' or '2'.")
+            print("Invalid choice. Please enter '1' or '2'.")
+
 
 def main():
     # Load .env file
@@ -53,7 +54,7 @@ def main():
     thread_id = str(uuid.uuid4())
     config = {"configurable": {"thread_id": thread_id}}
     
-    print(f"🟢 Session started. Memory thread ID: '{thread_id}'")
+    print(f"Session started. Memory thread ID: '{thread_id}'")
     print("Type 'exit' or 'quit' to end.")
     print()
     
@@ -66,19 +67,19 @@ def main():
             # If state has clarity_status == "needs_clarification", prompt for clarification
             is_clarification = bool(state.values and state.values.get("clarity_status") == "needs_clarification")
             if is_clarification:
-                user_prompt = "📝 Clarification Response: "
+                user_prompt = "Clarification Response: "
             else:
-                user_prompt = "👤 User Query: "
+                user_prompt = "User Query: "
                 
             user_input = input(user_prompt)
             if user_input.strip().lower() in ["exit", "quit"]:
-                print("\n👋 Thank you for using ResearchFlow AI!")
+                print("\nThank you for using ResearchFlow AI!")
                 break
                 
             if not user_input.strip():
                 continue
                 
-            print("\n🚀 Starting Multi-Agent Coordination Flow...")
+            print("\nStarting Multi-Agent Coordination Flow...")
             
             # Send message to graph
             # LangGraph checkpointer will append the message to history on this thread_id
@@ -99,7 +100,7 @@ def main():
             # Stream the execution steps so we see node changes
             for event in graph.stream(inputs, config, stream_mode="updates"):
                 for node_name, state_update in event.items():
-                    print(f"\n⚙️  Completed Node: [{node_name.upper()}]")
+                    print(f"\nCompleted Node: [{node_name.upper()}]")
                     
                     # Log state field updates specifically
                     if state_update is not None:
@@ -126,11 +127,11 @@ def main():
                     print("=" * 96 + "\n")
                     
         except KeyboardInterrupt:
-            print("\n👋 Session aborted.")
+            print("\nSession aborted.")
             break
         except Exception as e:
             import traceback
-            print("\n❌ Error during graph run:", file=sys.stderr)
+            print("\nError during graph run:", file=sys.stderr)
             traceback.print_exc()
             print()
 
