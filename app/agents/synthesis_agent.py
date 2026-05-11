@@ -1,11 +1,10 @@
 import os
 import logging
 import re
-from openai import AuthenticationError, RateLimitError
-from langchain_openai import ChatOpenAI
 from langchain_core.messages import SystemMessage, AIMessage, HumanMessage
 from app.schemas.state import ResearchAssistantState
 from app.prompts.synthesis_prompt import SYNTHESIS_SYSTEM_PROMPT, SYNTHESIS_HUMAN_PROMPT
+from app.utils.llm_router import get_llm, classify_llm_error
 
 logger = logging.getLogger(__name__)
 
@@ -15,11 +14,17 @@ def run_synthesis_agent(state: ResearchAssistantState) -> dict:
     FALLBACK: when no API key is present, builds a data-driven report from research_data
     without injecting any hardcoded facts or boilerplate.
     """
+    # 1. Circuit breaker: if we are in degraded mode, output the specific error message
+    degraded = state.get("degraded_mode")
+    if degraded:
+        logger.warning(f"Synthesis Agent: running in degraded mode due to {degraded}")
+        return {"messages": [AIMessage(content=f"Research unavailable due to {degraded}")]}
+
     messages = state.get("messages", [])
-    latest_query = messages[-1].content if messages else "General Business Research"
+    from app.utils.llm_router import resolve_query_context
+    latest_query = resolve_query_context(messages)
     research_data = state.get("research_data") or []
 
-    api_key = os.getenv("OPENAI_API_KEY", "")
 
     research_str = ""
     for idx, r in enumerate(research_data, 1):
@@ -27,9 +32,10 @@ def run_synthesis_agent(state: ResearchAssistantState) -> dict:
         research_str += f"    URL: {r.get('url', '')}\n"
         research_str += f"    Content: {r.get('content', '')}\n\n"
 
-    if api_key and "your_" not in api_key and api_key != "placeholder":
+    llm = get_llm(temperature=0.3, is_synthesis=True)
+
+    if llm is not None:
         try:
-            llm = ChatOpenAI(model="gpt-4o", temperature=0.3, api_key=api_key)
             # Escape user-supplied {} to prevent .format() injection
             safe_query = latest_query.replace("{", "{{").replace("}", "}}")
             system_msg = SystemMessage(content=SYNTHESIS_SYSTEM_PROMPT.format(query=safe_query))
@@ -39,10 +45,11 @@ def run_synthesis_agent(state: ResearchAssistantState) -> dict:
             human_msg = HumanMessage(content=SYNTHESIS_HUMAN_PROMPT.format(research_data=safe_research))
             response = llm.invoke([system_msg, human_msg])
             return {"messages": [AIMessage(content=response.content)]}
-        except (AuthenticationError, RateLimitError):
-            logger.error("Synthesis Agent: unrecoverable OpenAI error", exc_info=True)
-            raise
         except Exception as e:
+            classification = classify_llm_error(e)
+            if classification:
+                logger.error(f"Synthesis Agent: unrecoverable API error: {classification}")
+                return {"messages": [AIMessage(content=f"Research unavailable due to {classification}")]}
             logger.warning(f"Synthesis Agent LLM call failed, using mock fallback: {e}")
 
     # Data-driven mock fallback — ADR-004
@@ -68,7 +75,7 @@ def run_synthesis_agent(state: ResearchAssistantState) -> dict:
         findings = "_No research data was retrieved. Try a more specific query._\n"
 
     report_content = f"""# Business Research Report: {subject_title}
-
+ 
 ## 1. Executive Summary
 This report presents findings on **{subject_title}** based on web research retrieved by the ResearchFlow AI pipeline.
 

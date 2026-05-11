@@ -19,14 +19,35 @@ def print_banner():
     print("=" * 65)
     print()
 
+def select_llm_provider():
+    print("🤖 Choose your LLM Execution Mode for this session:")
+    print("   [1] Local (Ollama - phi3:mini) 🏠")
+    print("   [2] Cloud API (Groq - llama-3.3-70b-versatile) ⚡")
+    print()
+    while True:
+        choice = input("👉 Enter choice (1 or 2) [default: 1]: ").strip()
+        if not choice or choice == "1":
+            os.environ["LLM_PROVIDER"] = "ollama"
+            os.environ["OLLAMA_MODEL"] = "phi3:mini"
+            print("\n🟢 Selected Execution: Local 'phi3:mini' (Ollama)\n")
+            break
+        elif choice == "2":
+            os.environ["LLM_PROVIDER"] = "groq"
+            print("\n🟢 Selected Execution: Cloud 'llama-3.3-70b-versatile' (Groq)\n")
+            break
+        else:
+            print("❌ Invalid choice. Please enter '1' or '2'.")
+
 def main():
     # Load .env file
     load_dotenv()
     
     print_banner()
+    select_llm_provider()
     
     # Initialize the compiled LangGraph workflow
     graph = create_research_graph()
+
     
     # Session thread ID — unique per process start to prevent state bleed (ADR-005)
     thread_id = str(uuid.uuid4())
@@ -43,7 +64,8 @@ def main():
             state = graph.get_state(config)
             
             # If state has clarity_status == "needs_clarification", prompt for clarification
-            if state.values and state.values.get("clarity_status") == "needs_clarification":
+            is_clarification = bool(state.values and state.values.get("clarity_status") == "needs_clarification")
+            if is_clarification:
                 user_prompt = "📝 Clarification Response: "
             else:
                 user_prompt = "👤 User Query: "
@@ -62,22 +84,35 @@ def main():
             # LangGraph checkpointer will append the message to history on this thread_id
             inputs = {"messages": [HumanMessage(content=user_input)]}
             
+            # Reset query-specific state fields for a brand-new turn to prevent memory bleed
+            if not is_clarification:
+                inputs.update({
+                    "attempts": 0,
+                    "research_data": [],
+                    "confidence_score": 0,
+                    "validation_result": None,
+                    "validator_feedback": None,
+                    "degraded_mode": None
+                })
+
+            
             # Stream the execution steps so we see node changes
             for event in graph.stream(inputs, config, stream_mode="updates"):
                 for node_name, state_update in event.items():
                     print(f"\n⚙️  Completed Node: [{node_name.upper()}]")
                     
                     # Log state field updates specifically
-                    if "clarity_status" in state_update:
-                        print(f"   ↳ clarity_status: '{state_update['clarity_status']}'")
-                    if "attempts" in state_update:
-                        print(f"   ↳ research_attempts: {state_update['attempts']}")
-                    if "confidence_score" in state_update:
-                        print(f"   ↳ research_confidence_score: {state_update['confidence_score']}/10")
-                    if "validation_result" in state_update:
-                        print(f"   ↳ validation_result: '{state_update['validation_result']}'")
-                    if "validator_feedback" in state_update and state_update["validator_feedback"]:
-                        print(f"   ↳ validator_feedback: \"{state_update['validator_feedback']}\"")
+                    if state_update is not None:
+                        if "clarity_status" in state_update:
+                            print(f"   ↳ clarity_status: '{state_update['clarity_status']}'")
+                        if "attempts" in state_update:
+                            print(f"   ↳ research_attempts: {state_update['attempts']}")
+                        if "confidence_score" in state_update:
+                            print(f"   ↳ research_confidence_score: {state_update['confidence_score']}/10")
+                        if "validation_result" in state_update:
+                            print(f"   ↳ validation_result: '{state_update['validation_result']}'")
+                        if "validator_feedback" in state_update and state_update["validator_feedback"]:
+                            print(f"   ↳ validator_feedback: \"{state_update['validator_feedback']}\"")
                         
             # Get final state to print output
             final_state = graph.get_state(config)
@@ -94,7 +129,9 @@ def main():
             print("\n👋 Session aborted.")
             break
         except Exception as e:
-            print(f"\n❌ Error during graph run: {e}", file=sys.stderr)
+            import traceback
+            print("\n❌ Error during graph run:", file=sys.stderr)
+            traceback.print_exc()
             print()
 
 if __name__ == "__main__":

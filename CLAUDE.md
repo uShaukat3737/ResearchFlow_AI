@@ -18,15 +18,18 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 .venv/bin/pip install -r requirements.txt
 ```
 
-> The IDE uses system Python — always prefix test and run commands with `.venv/bin/python -m` to pick up installed packages. IDE "Cannot find module" errors for `langchain_core`, `openai`, `httpx` etc. are false positives.
+> The IDE uses system Python — always prefix test and run commands with `.venv/bin/python -m` to pick up installed packages. IDE "Cannot find module" errors for `langchain_core`, `langchain_google_genai`, `google.genai` etc. are false positives.
 
 ## Required Environment Variables
 
-Set in `.env` (both optional — agents fall back to mock data when absent):
+Set in `.env` (optional — agents fall back to mock data when absent):
 
 ```
-OPENAI_API_KEY=sk-...       # Used by all agents (gpt-4o-mini; synthesis uses gpt-4o)
-TAVILY_API_KEY=tvly-...     # Used by the Research Agent for web search
+OPENAI_API_KEY=sk-proj-...   # Used by default (gpt-4o-mini; synthesis uses gpt-4o)
+ANTHROPIC_API_KEY=sk-ant-... # Alternative provider (claude-3-5-haiku; synthesis uses claude-3-5-sonnet)
+GEMINI_API_KEY=AIza...       # Alternative provider (gemini-2.0-flash)
+TAVILY_API_KEY=tvly-...      # Used by the Research Agent for web search
+LLM_PROVIDER=openai          # Override provider selection (openai, anthropic, google)
 ```
 
 Any key value containing `"your_"` or equal to `"placeholder"` is treated as absent and triggers mock fallback.
@@ -42,12 +45,14 @@ START → clarity_agent
             ├─ needs_clarification → END   (graph halts; CLI re-prompts user)
             └─ clear → research_agent
                           ├─ high_confidence (score ≥ 6 OR attempts ≥ 3) → synthesis_agent → END
-                          └─ low_confidence → validator_agent
-                                                  ├─ loop_back (insufficient, attempts < 3) → research_agent
-                                                  └─ synthesize → synthesis_agent → END
+                          ├─ low_confidence → validator_agent
+                          │                       ├─ loop_back (insufficient, attempts < 3) → research_agent
+                          │                       └─ synthesize → synthesis_agent → END
+                          └─ degraded_mode (circuit breaker) ───────────→ synthesis_agent → END
 ```
 
 The `attempts ≥ MAX_RESEARCH_ATTEMPTS (3)` circuit-breaker in `route_research` ensures the loop always terminates even if the validator never returns "sufficient".
+An API-failure circuit breaker triggers if an unrecoverable LLM quota limit or auth error is encountered, shifting the state to `degraded_mode` and skipping directly to `synthesis_agent`.
 
 ### State Schema (`app/schemas/state.py`)
 
@@ -60,6 +65,7 @@ The `attempts ≥ MAX_RESEARCH_ATTEMPTS (3)` circuit-breaker in `route_research`
 | `attempts` | `int` | research_agent | Loop counter for circuit-breaker |
 | `validator_feedback` | `Optional[str]` | validator_agent | Injected into next search query |
 | `research_data` | `List[Dict]` | research_agent | Accumulated deduplicated results |
+| `degraded_mode` | `Optional[str]` | any agent | Signals unrecoverable quota/billing/auth limits |
 
 ### Agents (`app/agents/`)
 
@@ -67,15 +73,16 @@ Each agent is `run_*(state: ResearchAssistantState) -> dict` returning only upda
 
 | Agent | LLM | Output format | Mock fallback |
 |---|---|---|---|
-| `clarity_agent` | gpt-4o-mini | Structured `ClarityAnalysis` | `_has_named_subject()` heuristic |
-| `research_agent` | gpt-4o-mini | Structured `ResearchEvaluation` | keyword confidence (microsoft/apple/nvidia → 8, else 5) |
-| `validator_agent` | gpt-4o-mini | Structured `ValidationAnalysis` | insufficient at attempts ≤ 1, sufficient otherwise |
-| `synthesis_agent` | gpt-4o (temp 0.3) | Free text | data-driven report from `research_data` |
+| `clarity_agent` | Dynamic Router | Structured `ClarityAnalysis` | `_has_named_subject()` heuristic |
+| `research_agent` | Dynamic Router | Structured `ResearchEvaluation` | keyword confidence (microsoft/apple/nvidia → 8, else 5) |
+| `validator_agent` | Dynamic Router | Structured `ValidationAnalysis` | insufficient at attempts ≤ 1, sufficient otherwise |
+| `synthesis_agent` | Dynamic Router | Free text | data-driven report / degraded mode warning |
 
 ### Key Design Decisions
 
-- **Mock fallback**: All agents check `OPENAI_API_KEY` and fall back to deterministic offline logic. Tests run fully offline.
-- **Auth errors re-raised**: `AuthenticationError` and `RateLimitError` are never swallowed — they propagate to the caller so the user knows the key is invalid. Only transient/unexpected failures use the fallback.
+- **LLM Router**: Centralized in `app/utils/llm_router.py`. Automatically detects which API key is present (prioritizing OpenAI -> Anthropic -> Google) and instantiates the proper model with `.with_structured_output(...)` capabilities.
+- **Mock fallback**: All agents fall back to deterministic offline logic if no API keys are detected. Tests run fully offline.
+- **Unrecoverable Error Circuit Breaker**: If an unrecoverable API error (e.g. RateLimitError/AuthenticationError/ClientError) is raised, the agent catches it, classifies it via `classify_llm_error`, flags `degraded_mode` in the state, and short-circuits execution directly to `synthesis_agent`. The Synthesis Agent then prints `"Research unavailable due to LLM quota limits"` instead of generating fake report outputs.
 - **URL deduplication**: `research_data` is deduplicated by URL on every research attempt to prevent list growth across retries (ADR-003).
 - **Prompt injection boundaries**: User-controlled content and Tavily results are delimited with XML tags (`<user_query>`, `<research_data>`) in all prompts. Research data is passed as `HumanMessage`, not `SystemMessage`, in the synthesis agent (ADR-006).
 - **Thread ID**: Each CLI session generates a `uuid4()` thread ID to prevent state bleed across restarts (ADR-005).

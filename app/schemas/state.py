@@ -23,3 +23,7 @@ class ResearchAssistantState(TypedDict):
     
     # Specific instructions from the validator agent on gaps to fill
     validator_feedback: Optional[str]
+
+    # Circuit-breaker state indicator when live LLM API returns quota or billing blocks
+    degraded_mode: Optional[str]
+

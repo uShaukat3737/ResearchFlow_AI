@@ -1,12 +1,11 @@
 import os
 import logging
 from typing import Optional
-from openai import AuthenticationError, RateLimitError
 from pydantic import BaseModel, Field
-from langchain_openai import ChatOpenAI
 from langchain_core.messages import SystemMessage, HumanMessage
 from app.schemas.state import ResearchAssistantState
 from app.prompts.validator_prompt import VALIDATOR_SYSTEM_PROMPT
+from app.utils.llm_router import get_llm, classify_llm_error
 
 logger = logging.getLogger(__name__)
 
@@ -19,12 +18,14 @@ def run_validator_agent(state: ResearchAssistantState) -> dict:
     """
     Validator Agent node. Checks gathered data sufficiency and suggests improvements.
     """
+    # 1. Circuit breaker: if we are already in degraded mode, bypass immediately
+    if state.get("degraded_mode"):
+        return {}
+
     messages = state.get("messages", [])
     latest_query = messages[-1].content if messages else "general market trends"
     research_data = state.get("research_data") or []
     attempts = state.get("attempts", 0)
-    
-    api_key = os.getenv("OPENAI_API_KEY", "")
     
     # Format current research data as a clean string for analysis
     research_str = "\n\n".join([
@@ -32,10 +33,11 @@ def run_validator_agent(state: ResearchAssistantState) -> dict:
         for r in research_data
     ])
     
+    llm = get_llm(temperature=0.0, is_synthesis=False)
+
     # Try LLM structured output
-    if api_key and "your_" not in api_key and api_key != "placeholder":
+    if llm is not None:
         try:
-            llm = ChatOpenAI(model="gpt-4o-mini", temperature=0, api_key=api_key)
             structured_llm = llm.with_structured_output(ValidationAnalysis)
             
             system_msg = SystemMessage(content=VALIDATOR_SYSTEM_PROMPT.format(
@@ -54,10 +56,14 @@ def run_validator_agent(state: ResearchAssistantState) -> dict:
                 "validation_result": validation_res,
                 "validator_feedback": feedback,
             }
-        except (AuthenticationError, RateLimitError):
-            logger.error("Validator Agent: unrecoverable OpenAI error", exc_info=True)
-            raise
         except Exception as e:
+            classification = classify_llm_error(e)
+            if classification:
+                logger.error(f"Validator Agent: unrecoverable API error: {classification}")
+                return {
+                    "degraded_mode": classification,
+                    "validation_result": "sufficient" # route to synthesis
+                }
             logger.warning(f"Validator Agent LLM call failed, using mock loop fallback: {e}")
             
     # Mock fallback logic

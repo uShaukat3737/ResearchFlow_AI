@@ -50,27 +50,19 @@ def test_empty_initial_state_defaults_are_safe():
 # ---------------------------------------------------------------------------
 
 def test_clarity_agent_propagates_auth_error():
-    """AuthenticationError must NOT be swallowed by the fallback — reviewer HIGH finding."""
-    import httpx
-    from openai import AuthenticationError
+    """ClientError must set degraded_mode — updated from legacy crash behavior."""
+    from google.genai.errors import ClientError
     from app.agents.clarity_agent import run_clarity_agent
 
-    fake_response = MagicMock(spec=httpx.Response)
-    fake_response.status_code = 401
-    fake_response.headers = MagicMock()
-    fake_response.headers.get = MagicMock(return_value=None)
-    auth_err = AuthenticationError(
-        message="Invalid API key",
-        response=fake_response,
-        body={"error": {"message": "Invalid API key"}},
-    )
-    with patch.dict(os.environ, {"OPENAI_API_KEY": "sk-reallooking123notplaceholder"}):
-        with patch("app.agents.clarity_agent.ChatOpenAI") as mock_cls:
-            mock_inst = MagicMock()
-            mock_inst.with_structured_output.return_value.invoke.side_effect = auth_err
-            mock_cls.return_value = mock_inst
-            with pytest.raises(AuthenticationError):
-                run_clarity_agent({"messages": [HumanMessage("Microsoft strategy")]})
+    auth_err = ClientError(403, {"error": {"message": "Invalid API key"}})
+    with patch("app.agents.clarity_agent.get_llm") as mock_get_llm:
+        mock_llm = MagicMock()
+        mock_llm.with_structured_output.return_value.invoke.side_effect = auth_err
+        mock_get_llm.return_value = mock_llm
+        
+        result = run_clarity_agent({"messages": [HumanMessage("Microsoft strategy")]})
+        assert result["clarity_status"] == "clear"
+        assert result["degraded_mode"] == "LLM authorization failed"
 
 def test_clarity_agent_whitespace_content_needs_clarification():
     from app.agents.clarity_agent import run_clarity_agent
@@ -181,31 +173,24 @@ def test_research_data_grows_on_fresh_results():
     assert len(result["research_data"]) > 0
 
 def test_research_agent_propagates_auth_error():
-    """AuthenticationError must not be swallowed — mirrors clarity_agent pattern."""
-    import httpx
-    from openai import AuthenticationError
+    """ClientError must set degraded_mode — updated from legacy crash behavior."""
+    from google.genai.errors import ClientError
     from app.agents.research_agent import run_research_agent
 
-    fake_response = MagicMock(spec=httpx.Response)
-    fake_response.status_code = 401
-    fake_response.headers = MagicMock()
-    fake_response.headers.get = MagicMock(return_value=None)
-    auth_err = AuthenticationError(
-        message="Invalid API key",
-        response=fake_response,
-        body={"error": {"message": "Invalid API key"}},
-    )
-    with patch.dict(os.environ, {"OPENAI_API_KEY": "sk-reallooking123notplaceholder"}):
-        with patch("app.agents.research_agent.ChatOpenAI") as mock_cls:
-            mock_inst = MagicMock()
-            mock_inst.invoke.side_effect = auth_err
-            mock_cls.return_value = mock_inst
-            with pytest.raises(AuthenticationError):
-                run_research_agent({
-                    "messages": [HumanMessage("Microsoft strategy")],
-                    "attempts": 0,
-                    "research_data": [],
-                })
+    auth_err = ClientError(403, {"error": {"message": "Invalid API key"}})
+    with patch("app.agents.research_agent.get_llm") as mock_get_llm:
+        mock_llm = MagicMock()
+        mock_llm.invoke.side_effect = auth_err
+        mock_get_llm.return_value = mock_llm
+        
+        result = run_research_agent({
+            "messages": [HumanMessage("Microsoft strategy")],
+            "attempts": 0,
+            "research_data": [],
+        })
+        assert result["degraded_mode"] == "LLM authorization failed"
+        assert result["confidence_score"] == 0
+        assert result["attempts"] == 1
 
 def test_research_agent_returns_zero_confidence_on_empty_search_results():
     """Empty Tavily results must yield confidence_score=0 — reviewer HIGH finding."""
@@ -335,31 +320,23 @@ def test_validator_agent_clears_feedback_on_sufficient():
     assert result["validator_feedback"] is None
 
 def test_validator_agent_propagates_auth_error():
-    """AuthenticationError must NOT be swallowed — Bug #4 reviewer HIGH finding."""
-    import httpx
-    from openai import AuthenticationError
+    """ClientError must set degraded_mode — updated from legacy crash behavior."""
+    from google.genai.errors import ClientError
     from app.agents.validator_agent import run_validator_agent
 
-    fake_response = MagicMock(spec=httpx.Response)
-    fake_response.status_code = 401
-    fake_response.headers = MagicMock()
-    fake_response.headers.get = MagicMock(return_value=None)
-    auth_err = AuthenticationError(
-        message="Invalid API key",
-        response=fake_response,
-        body={"error": {"message": "Invalid API key"}},
-    )
-    with patch.dict(os.environ, {"OPENAI_API_KEY": "sk-reallooking123notplaceholder"}):
-        with patch("app.agents.validator_agent.ChatOpenAI") as mock_cls:
-            mock_inst = MagicMock()
-            mock_inst.with_structured_output.return_value.invoke.side_effect = auth_err
-            mock_cls.return_value = mock_inst
-            with pytest.raises(AuthenticationError):
-                run_validator_agent({
-                    "messages": [HumanMessage("Tesla strategy")],
-                    "research_data": [{"title": "T", "url": "http://x.com", "content": "c"}],
-                    "attempts": 1,
-                })
+    auth_err = ClientError(403, {"error": {"message": "Invalid API key"}})
+    with patch("app.agents.validator_agent.get_llm") as mock_get_llm:
+        mock_llm = MagicMock()
+        mock_llm.with_structured_output.return_value.invoke.side_effect = auth_err
+        mock_get_llm.return_value = mock_llm
+        
+        result = run_validator_agent({
+            "messages": [HumanMessage("Tesla strategy")],
+            "research_data": [{"title": "T", "url": "http://x.com", "content": "c"}],
+            "attempts": 1,
+        })
+        assert result["degraded_mode"] == "LLM authorization failed"
+        assert result["validation_result"] == "sufficient"
 
 def test_validator_agent_llm_invoke_includes_human_message():
     """LLM invocation must include a HumanMessage — Bug #4 fix verification."""
@@ -367,25 +344,24 @@ def test_validator_agent_llm_invoke_includes_human_message():
     from langchain_core.messages import HumanMessage as HM
 
     captured = {}
-    with patch.dict(os.environ, {"OPENAI_API_KEY": "sk-reallooking123notplaceholder"}):
-        with patch("app.agents.validator_agent.ChatOpenAI") as mock_cls:
-            mock_inst = MagicMock()
-            mock_result = MagicMock()
-            mock_result.is_sufficient = True
-            mock_result.feedback = None
+    with patch("app.agents.validator_agent.get_llm") as mock_get_llm:
+        mock_llm = MagicMock()
+        mock_result = MagicMock()
+        mock_result.is_sufficient = True
+        mock_result.feedback = None
 
-            def capture_invoke(msgs):
-                captured["msgs"] = msgs
-                return mock_result
+        def capture_invoke(msgs):
+            captured["msgs"] = msgs
+            return mock_result
 
-            mock_inst.with_structured_output.return_value.invoke.side_effect = capture_invoke
-            mock_cls.return_value = mock_inst
-            run_validator_agent({
-                "messages": [HM("Tesla strategy")],
-                "research_data": [{"title": "T", "url": "http://x.com", "content": "c"}],
-                "attempts": 1,
-            })
+        mock_llm.with_structured_output.return_value.invoke.side_effect = capture_invoke
+        mock_get_llm.return_value = mock_llm
 
+        run_validator_agent({
+            "messages": [HumanMessage("Tesla strategy")],
+            "research_data": [{"title": "T", "url": "http://x.com", "content": "c"}],
+            "attempts": 1,
+        })
     assert any(isinstance(m, HM) for m in captured.get("msgs", [])), (
         "LLM invoke must include a HumanMessage — Bug #4"
     )
@@ -423,17 +399,19 @@ def test_validator_agent_defaults_feedback_when_llm_returns_none_feedback():
     """If LLM returns is_sufficient=False but feedback=None, agent must supply fallback feedback."""
     from app.agents.validator_agent import run_validator_agent
     from unittest.mock import MagicMock as MM
-    with patch.dict(os.environ, {"OPENAI_API_KEY": "sk-reallooking123notplaceholder"}):
-        with patch("app.agents.validator_agent.ChatOpenAI") as mock_cls:
-            mock_result = MM()
-            mock_result.is_sufficient = False
-            mock_result.feedback = None
-            mock_cls.return_value.with_structured_output.return_value.invoke.return_value = mock_result
-            result = run_validator_agent({
-                "messages": [HumanMessage("Tesla strategy")],
-                "research_data": [{"title": "T", "url": "http://x.com", "content": "c"}],
-                "attempts": 1,
-            })
+    with patch("app.agents.validator_agent.get_llm") as mock_get_llm:
+        mock_llm = MM()
+        mock_result = MM()
+        mock_result.is_sufficient = False
+        mock_result.feedback = None
+        mock_llm.with_structured_output.return_value.invoke.return_value = mock_result
+        mock_get_llm.return_value = mock_llm
+        
+        result = run_validator_agent({
+            "messages": [HumanMessage("Tesla strategy")],
+            "research_data": [{"title": "T", "url": "http://x.com", "content": "c"}],
+            "attempts": 1,
+        })
     assert result["validation_result"] == "insufficient"
     assert result.get("validator_feedback") is not None, (
         "validator_feedback must not be None when validation_result is insufficient"
@@ -516,28 +494,22 @@ def test_synthesis_agent_produces_output_for_any_company():
 # Phase 5 (reviewer findings): Synthesis security + edge cases
 
 def test_synthesis_agent_propagates_auth_error():
-    """AuthenticationError must not be swallowed — reviewer HIGH finding."""
-    import httpx
-    from openai import AuthenticationError
+    """ClientError must set degraded_mode / message rather than raw crash."""
+    from google.genai.errors import ClientError
     from app.agents.synthesis_agent import run_synthesis_agent
 
-    fake_response = MagicMock(spec=httpx.Response)
-    fake_response.status_code = 401
-    fake_response.headers = MagicMock()
-    fake_response.headers.get = MagicMock(return_value=None)
-    auth_err = AuthenticationError(
-        message="Invalid API key",
-        response=fake_response,
-        body={"error": {"message": "Invalid API key"}},
-    )
-    with patch.dict(os.environ, {"OPENAI_API_KEY": "sk-reallooking123notplaceholder"}):
-        with patch("app.agents.synthesis_agent.ChatOpenAI") as mock_cls:
-            mock_cls.return_value.invoke.side_effect = auth_err
-            with pytest.raises(AuthenticationError):
-                run_synthesis_agent({
-                    "messages": [HumanMessage("Microsoft strategy")],
-                    "research_data": [],
-                })
+    auth_err = ClientError(403, {"error": {"message": "Invalid API key"}})
+    with patch("app.agents.synthesis_agent.get_llm") as mock_get_llm:
+        mock_llm = MagicMock()
+        mock_llm.invoke.side_effect = auth_err
+        mock_get_llm.return_value = mock_llm
+        
+        result = run_synthesis_agent({
+            "messages": [HumanMessage("Microsoft strategy")],
+            "research_data": [],
+        })
+        assert "messages" in result
+        assert "Research unavailable due to" in result["messages"][-1].content
 
 def test_synthesis_agent_handles_format_braces_in_query():
     """User query containing {} must not raise KeyError in .format() call — SECURITY."""
@@ -568,18 +540,20 @@ def test_synthesis_llm_path_sends_research_data_as_human_message():
     """Research data must be in HumanMessage, not SystemMessage — PROMPT/SECURITY."""
     from app.agents.synthesis_agent import run_synthesis_agent
     captured = {}
-    with patch.dict(os.environ, {"OPENAI_API_KEY": "sk-reallooking123notplaceholder"}):
-        with patch("app.agents.synthesis_agent.ChatOpenAI") as mock_cls:
-            mock_resp = MagicMock()
-            mock_resp.content = "report"
-            def capture_invoke(msgs):
-                captured["msgs"] = msgs
-                return mock_resp
-            mock_cls.return_value.invoke.side_effect = capture_invoke
-            run_synthesis_agent({
-                "messages": [HumanMessage("Microsoft strategy")],
-                "research_data": [{"title": "T", "url": "http://x.com", "content": "c"}],
-            })
+    with patch("app.agents.synthesis_agent.get_llm") as mock_get_llm:
+        mock_llm = MagicMock()
+        mock_resp = MagicMock()
+        mock_resp.content = "report"
+        def capture_invoke(msgs):
+            captured["msgs"] = msgs
+            return mock_resp
+        mock_llm.invoke.side_effect = capture_invoke
+        mock_get_llm.return_value = mock_llm
+        
+        run_synthesis_agent({
+            "messages": [HumanMessage("Microsoft strategy")],
+            "research_data": [{"title": "T", "url": "http://x.com", "content": "c"}],
+        })
     from langchain_core.messages import HumanMessage as HM
     assert any(isinstance(m, HM) for m in captured.get("msgs", [])), (
         "LLM invocation must include a HumanMessage containing research data"
@@ -782,3 +756,52 @@ def test_synthesis_research_str_with_braces_does_not_raise():
         "research_data": [{"title": "IBM {ROI} report", "url": "http://ibm.example.com", "content": "revenue {growth} 5%"}],
     })
     assert "messages" in result
+
+# ---------------------------------------------------------------------------
+# Phase 10: LLM Router and Degraded Mode Circuit Breaker Verification
+# ---------------------------------------------------------------------------
+
+def test_llm_router_auto_detects_provider():
+    """LLM Router must detect active providers based on keys and respect overrides."""
+    from app.utils.llm_router import get_active_provider, PROVIDER_OPENAI, PROVIDER_ANTHROPIC, PROVIDER_GOOGLE
+    
+    # Test auto-detection priorities
+    with patch.dict(os.environ, {"OPENAI_API_KEY": "sk-test123notplaceholder", "ANTHROPIC_API_KEY": "at-test", "GEMINI_API_KEY": "ai-test"}):
+        provider, _ = get_active_provider()
+        assert provider == PROVIDER_OPENAI
+        
+    with patch.dict(os.environ, {"OPENAI_API_KEY": "placeholder", "ANTHROPIC_API_KEY": "at-test123notplaceholder", "GEMINI_API_KEY": "ai-test"}):
+        provider, _ = get_active_provider()
+        assert provider == PROVIDER_ANTHROPIC
+        
+    with patch.dict(os.environ, {"OPENAI_API_KEY": "placeholder", "ANTHROPIC_API_KEY": "your_anthropic_key", "GEMINI_API_KEY": "ai-test123notplaceholder"}):
+        provider, _ = get_active_provider()
+        assert provider == PROVIDER_GOOGLE
+
+    # Test override behavior
+    with patch.dict(os.environ, {
+        "OPENAI_API_KEY": "sk-test123notplaceholder",
+        "ANTHROPIC_API_KEY": "at-test123notplaceholder",
+        "LLM_PROVIDER": "anthropic"
+    }):
+        provider, _ = get_active_provider()
+        assert provider == PROVIDER_ANTHROPIC
+
+def test_degraded_mode_circuit_breaker():
+    """The graph must immediately short circuit to synthesis and return a friendly quota warning if degraded_mode is flagged."""
+    from app.graph.builder import create_research_graph
+    
+    graph = create_research_graph()
+    config = {"configurable": {"thread_id": "test_thread_circuit_breaker"}}
+    inputs = {
+        "messages": [HumanMessage(content="Explain quantum computing dynamics")],
+        "degraded_mode": "LLM quota limits"
+    }
+    
+    result = graph.invoke(inputs, config)
+    
+    # Ensure it outputted the exact quota warning
+    assert result["degraded_mode"] == "LLM quota limits"
+    messages = result.get("messages", [])
+    assert len(messages) > 1
+    assert messages[-1].content == "Research unavailable due to LLM quota limits"

@@ -5,6 +5,8 @@ def route_clarity(state: ResearchAssistantState) -> str:
     """
     Decides whether to pause (end) for clarification or proceed to research.
     """
+    if state.get("degraded_mode"):
+        return "clear"
     if state.get("clarity_status") == "needs_clarification":
         # Returns "__end__" to yield control back to the client/user
         return "needs_clarification"
@@ -19,6 +21,8 @@ def route_research(state: ResearchAssistantState) -> str:
     When the circuit-breaker has fired (attempts >= MAX_RESEARCH_ATTEMPTS), bypass
     the validator entirely and proceed directly to synthesis.
     """
+    if state.get("degraded_mode"):
+        return "high_confidence"
     score = state.get("confidence_score", 0)
     attempts = state.get("attempts", 0)
     if attempts >= MAX_RESEARCH_ATTEMPTS or score >= 6:
@@ -31,6 +35,8 @@ def route_validator(state: ResearchAssistantState) -> str:
     Loops back to research if insufficient and attempts < 3,
     otherwise proceeds to synthesis.
     """
+    if state.get("degraded_mode"):
+        return "synthesize"
     result = state.get("validation_result", "insufficient")
     attempts = state.get("attempts", 0)
     
