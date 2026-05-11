@@ -1,0 +1,125 @@
+prompts and 
+
+chatgpt (free model - lower tier)
+p1 :what to name this project and how to go about it , give detailed implementation plan mising out nothing.
+  -why: to get a gist of the proj repo style.
+
+gemini (flash 3)
+p1:
+insightgraph/
+│
+├── app/
+│   ├── graph/
+│   │   ├── builder.py
+│   │   ├── routing.py
+│   │
+│   ├── agents/
+│   │   ├── clarity_agent.py
+│   │   ├── research_agent.py
+│   │   ├── validator_agent.py
+│   │   ├── synthesis_agent.py
+│   │
+│   ├── tools/
+│   │   ├── tavily_search.py
+│   │
+│   ├── memory/
+│   │   ├── checkpoint.py
+│   │
+│   ├── schemas/
+│   │   ├── state.py
+│   │
+│   ├── prompts/
+│   │   ├── clarity_prompt.py
+│   │   ├── research_prompt.py
+│   │   ├── validator_prompt.py
+│   │   ├── synthesis_prompt.py
+│
+├── tests/
+├── main.py
+├── .env
+├── requirements.txt
+
+set up this repo
+
+  -why: having the skeleton code running with bare bone working model.
+
+claude (sonnet 4.6)
+p1: /init
+  -why: so that cladue could initialise claude.md and get a feel of things
+
+p2: created custom code reviewer agent on the following signals:
+Goal:
+Review my LangGraph business assistant for:
+
+1. Architecture correctness
+2. Agent routing bugs
+3. State-management bugs
+4. Memory leaks
+5. Prompt issues
+6. Security issues
+7. Infinite loops
+8. Missing edge cases
+9. Poor modularization
+10. LangGraph anti-patterns
+
+the agent is inside /agents folder local to the project
+
+p3: this was just starter code to get a feel of things.
+  ▎ create.claude directory branched into agents,rules,skills and commons for further branching of claude md.
+  ▎
+  ▎ create proper plan.md for the follwing problem:
+  ▎ [problem statement]
+  ▎we will use TDD approach and run tests automatically after each significant change
+  ▎we will also use the @.claude/agents/langgraph-assistant-reviewer.md to review our code
+
+
+Phase 0: Create .claude rules/ skills/ commons/ infrastructure
+
+Phase 0: Create .gitignore and plan.md at repo root
+
+Phase 0: Verify existing tests still pass
+
+Phase 1: Write failing state schema tests [RED]
+
+Phase 1: Harden state.py + create conftest.py [GREEN]
+
+Phase 1: Run langgraph-assistant-reviewer on schemas
+
+Phase 2: Write failing clarity agent tests [RED]
+
+Phase 2: Fix clarity_agent.py hardcoded keywords + ADR-002 [GREEN]
+
+Phase 2: Run langgraph-assistant-reviewer on clarity agent
+
+Phase 3a: Fix dead variable in research_agent.py + regression tests
+
+Phase 3b: Write failing feedback test [RED] then fix [GREEN]
+
+Phase 3c: Write failing dedup test [RED] then fix + ADR-003 [GREEN]
+
+Phase 3: Run langgraph-assistant-reviewer on research agent
+
+Phase 4: Write failing validator tests [RED] then fix + ADR-001 [GREEN]
+
+Phase 4: Run langgraph-assistant-reviewer on validator agent
+
+Phase 5: Write failing synthesis tests [RED] then fix + ADR-004 [GREEN]
+
+Phase 5: Run langgraph-assistant-reviewer on synthesis agent
+
+Phase 6: Write thread isolation test [RED] then fix + ADR-005 [GREEN]
+
+Phase 6: Run langgraph-assistant-reviewer on main.py
+
+Phase 7: Add 9 integration edge case tests
+
+Phase 8: Write failing prompt delimiter tests [RED] then fix [GREEN]
+
+Phase 8: Run langgraph-assistant-reviewer on all prompts
+
+Phase 9: Full review + finalize CLAUDE.md and architecture-overview.md
+
+  -why: had claude develop final plan for execution. had it use tdd so implementation is without breaking already existing stuff and all requirements are accounted for 
+        had it use the code review agent to review all newly generated code.
+
+  then i reviewed the plan.md file and gave it the ok sign.
