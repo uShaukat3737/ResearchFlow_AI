@@ -150,13 +150,29 @@ TAVILY_API_KEY=tvly-your_tavily_key_here
 
 ## Running the Application
 
-Launch the research pipeline directly:
+ResearchFlow AI ships with two interfaces: a terminal CLI and a Streamlit web UI.
+
+### Option A — Streamlit Web UI (Recommended)
+
 ```bash
-python main.py
+.venv/bin/streamlit run streamlit_app.py
 ```
 
-### Prompt Interactive Selection
-Upon launch, you will be greeted by the terminal menu to select your mode:
+Open the URL printed in the terminal (default `http://localhost:8501`). The UI provides:
+
+- **Sidebar provider selector** — switch between Local Ollama (`phi3:mini`) and Cloud Groq (`llama-3.3-70b`) without editing `.env`.
+- **Live pipeline stage cards** — four cards (Clarity → Research → Validator → Synthesis) animate in real-time as each agent completes, showing per-agent metrics (confidence score, attempt count, validation result).
+- **Research sources panel** — collapsible expander listing every deduplicated source URL with title, snippet, and relevance score.
+- **Final report block** — rendered markdown report with a summary metrics row (attempts, confidence, validation, source count).
+- **New Session button** — resets thread ID and all pipeline state with one click.
+
+### Option B — Terminal CLI
+
+```bash
+.venv/bin/python main.py
+```
+
+Upon launch you will be greeted by the terminal menu:
 ```text
 🤖 Choose your LLM Execution Mode for this session:
    [1] Local (Ollama - phi3:mini) 🏠
@@ -165,7 +181,7 @@ Upon launch, you will be greeted by the terminal menu to select your mode:
 👉 Enter choice (1 or 2) [default: 1]:
 ```
 
-Simply input your choice or hit **Enter** to default to the local model, and begin researching! Type `exit` or `quit` to exit.
+Input your choice or hit **Enter** to default to the local model. Type `exit` or `quit` to exit.
 
 ---
 
@@ -173,8 +189,8 @@ Simply input your choice or hit **Enter** to default to the local model, and beg
 
 Ensure system performance and integration safety by running the test suite:
 ```bash
-# Run all 65 automated tests offline (zero api credits consumed)
-pytest tests/ -v
+# Run all tests offline (zero API credits consumed)
+.venv/bin/python -m pytest tests/ -v
 ```
 
 ---
