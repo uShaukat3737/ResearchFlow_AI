@@ -306,13 +306,24 @@ def _render_stage_cards(completed_nodes: list[dict]) -> None:
         with col:
             is_complete = node_key in completed_map
             is_active = node_key == active_node and not is_complete
+            
+            # Detect skipped validator agent: if synthesis started but validator didn't run
+            is_skipped = (
+                not is_complete 
+                and node_key == "validator_agent" 
+                and ("synthesis_agent" in completed_map or active_node == "synthesis_agent")
+            )
 
             card_class = (
                 "rf-stage-card complete"
                 if is_complete
                 else ("rf-stage-card active" if is_active else "rf-stage-card pending")
             )
-            badge = "✓" if is_complete else ("▶" if is_active else "○")
+            
+            if is_skipped:
+                badge = "»"  # Skip icon
+            else:
+                badge = "✓" if is_complete else ("▶" if is_active else "○")
 
             detail_lines: list[str] = []
             if is_complete:
@@ -333,11 +344,15 @@ def _render_stage_cards(completed_nodes: list[dict]) -> None:
                 if "degraded_mode" in upd and upd["degraded_mode"]:
                     detail_lines.append("⚠️ Degraded mode")
 
-            detail_html = (
-                "<br>".join(detail_lines) if detail_lines else (
-                    "<em>In progress…</em>" if is_active else "Waiting"
-                )
-            )
+            if is_skipped:
+                detail_html = "Threshold met so skipped"
+            elif is_complete:
+                detail_html = "<br>".join(detail_lines) if detail_lines else "Completed"
+            elif is_active:
+                detail_html = "<em>In progress…</em>"
+            else:
+                detail_html = "Waiting"
+
 
             st.markdown(
                 f"""

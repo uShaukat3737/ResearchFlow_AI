@@ -2,11 +2,14 @@
 
 ResearchFlow AI is an advanced, production-grade LangGraph multi-agent pipeline designed for deep, autonomous business research and intelligence gathering. By coordinating four specialized agentic personas—Clarity, Research, Validator, and Synthesis—through a Directed Acyclic Graph (DAG) state machine, the system transforms vague, multi-turn conversational queries into professional, highly validated executive reports.
 
+![ResearchFlow AI Interface](app/screenshots/app_preview.png)
+
+
 ---
 
 ## Key Highlights and Features
 
-- **Interactive LLM Provider Switching (Ollama vs. Groq vs. Gemini):** Toggle dynamically at startup between running a 100% offline local model (Ollama with `phi3:mini`) and lightning-fast cloud flagship APIs (Groq with `llama-3.3-70b-versatile`). No manual `.env` file editing needed.
+- **Interactive LLM Provider Switching (Ollama vs. Groq vs. Gemini):** Toggle dynamically at startup (or via the UI sidebar) between running a 100% offline local model (Ollama with `phi3:mini`) and lightning-fast cloud flagship APIs (Groq with `llama-3.3-70b-versatile`). No manual `.env` file editing needed.
 - **AI-Driven Multi-Turn Query Condensation:** Seamlessly supports continuous conversation. Pronouns (such as *"their"*, *"it"*, or *"him"*) and follow-up context are dynamically resolved into independent, standalone research queries using history transcript analysis.
 - **State Reset Leakage Protection:** Query-specific states (`attempts`, `research_data`, and validation feedback) are dynamically wiped clean on brand-new turns, preventing old report data from bleeding into new searches while maintaining conversation memory intact.
 - **Iterative Human-in-the-Loop Clarification:** Ambiguous queries are identified at the boundary and returned to the user for clarification before web-search credits are consumed.
@@ -20,7 +23,7 @@ ResearchFlow AI is an advanced, production-grade LangGraph multi-agent pipeline 
 ```mermaid
 flowchart TD
     %% Startup & Configuration
-    START([START]) --> SELECT_PROVIDER{"Select LLM Provider\n(Interactive Startup Prompt)"}
+    START([START]) --> SELECT_PROVIDER{"Select LLM Provider\n(Interactive Startup Prompt / UI Sidebar)"}
     
     SELECT_PROVIDER -->|Choice 1| LOCAL_OLLAMA["Local Ollama\n(phi3:mini)"]
     SELECT_PROVIDER -->|Choice 2| CLOUD_GROQ["Cloud Groq\n(llama-3.3-70b-versatile)"]
@@ -150,7 +153,7 @@ TAVILY_API_KEY=tvly-your_tavily_key_here
 
 ## Running the Application
 
-ResearchFlow AI ships with two interfaces: a terminal CLI and a Streamlit web UI.
+ResearchFlow AI ships with two interfaces: a modern Streamlit web UI and a terminal CLI.
 
 ### Option A — Streamlit Web UI (Recommended)
 
@@ -160,7 +163,7 @@ ResearchFlow AI ships with two interfaces: a terminal CLI and a Streamlit web UI
 
 Open the URL printed in the terminal (default `http://localhost:8501`). The UI provides:
 
-- **Sidebar provider selector** — switch between Local Ollama (`phi3:mini`) and Cloud Groq (`llama-3.3-70b`) without editing `.env`.
+- **Sidebar provider selector** — switch between Local Ollama (`phi3:mini`) and Cloud Groq (`llama-3.3-70b`) dynamically without editing `.env`.
 - **Live pipeline stage cards** — four cards (Clarity → Research → Validator → Synthesis) animate in real-time as each agent completes, showing per-agent metrics (confidence score, attempt count, validation result).
 - **Research sources panel** — collapsible expander listing every deduplicated source URL with title, snippet, and relevance score.
 - **Final report block** — rendered markdown report with a summary metrics row (attempts, confidence, validation, source count).
@@ -172,7 +175,7 @@ Open the URL printed in the terminal (default `http://localhost:8501`). The UI p
 .venv/bin/python main.py
 ```
 
-Upon launch you will be greeted by the terminal menu:
+Upon launch you will be greeted by the terminal menu to select your mode:
 ```text
 🤖 Choose your LLM Execution Mode for this session:
    [1] Local (Ollama - phi3:mini) 🏠
@@ -189,7 +192,7 @@ Input your choice or hit **Enter** to default to the local model. Type `exit` or
 
 Ensure system performance and integration safety by running the test suite:
 ```bash
-# Run all tests offline (zero API credits consumed)
+# Run all 65 automated tests offline (zero api credits consumed)
 .venv/bin/python -m pytest tests/ -v
 ```
 
@@ -206,3 +209,4 @@ Key engineering patterns and architectural choices are recorded in `.claude/comm
 *   **ADR-004:** Synthesis fallback dynamically synthesizes reports from `research_data` when offline.
 *   **ADR-005:** Thread isolation generated as a unique `uuid4()` session to eliminate state bleed.
 *   **ADR-006:** Context payloads are injected as `HumanMessage` instead of `SystemMessage` in the synthesis prompt to optimize modern chat alignments.
+
